@@ -1,3 +1,9 @@
+"""
+Email finding via Prospeo.io /enrich-person.
+Raises RateLimitExceeded on 429 so the caller can stop early
+and return whatever emails were found so far.
+"""
+
 import logging
 import re
 import time
@@ -8,7 +14,7 @@ from models import Lead
 logger = logging.getLogger(__name__)
 
 PROSPEO_ENRICH   = "https://api.prospeo.io/enrich-person"
-RATE_LIMIT_SLEEP = 2.5
+RATE_LIMIT_SLEEP = 4.0
 
 
 class RateLimitExceeded(Exception):
@@ -35,7 +41,16 @@ def _post(api_key: str, payload: dict) -> Optional[dict]:
             timeout=15,
         )
         if resp.status_code == 429:
-            raise RateLimitExceeded("Prospeo rate limit hit")
+            import time as _t
+            _t.sleep(30)
+            resp = requests.post(
+                PROSPEO_ENRICH,
+                json=payload,
+                headers={"X-KEY": api_key, "Content-Type": "application/json"},
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                raise RateLimitExceeded("Prospeo rate limit hit")
         resp.raise_for_status()
         return resp.json()
     except RateLimitExceeded:
